@@ -1,0 +1,98 @@
+import cv2
+import easyocr
+import time
+
+# Load the Haar Cascade for cars
+car_cascade = cv2.CascadeClassifier('/Users/mohan/Desktop/NumberplateRecognition/cars.xml')
+
+def preprocess_image(image):
+    """Preprocess the image for OCR."""
+    # Convert the image to grayscale
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    
+    # Apply binary thresholding to make the text stand out
+    _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+    
+    # Optional: apply Gaussian blur to reduce noise
+    blurred = cv2.GaussianBlur(thresh, (5, 5), 0)
+    return blurred
+
+def extract_number_plate_text(image):
+    """Use EasyOCR to extract text from the image."""
+    reader = easyocr.Reader(['en'])
+    
+    # Try reading the text from the image
+    results = reader.readtext(image, detail=0)  # Set detail=0 to just get the text, no bounding box
+    
+    # Join all detected texts into a single string
+    plate_text = " ".join(results)
+    return plate_text
+
+def process_video(video_path):
+    """
+    Process a video frame by frame to detect cars and extract number plates.
+    Use `video_path=0` for live camera feed or provide a video file path.
+    """
+    print("Initializing video capture...")
+    cap = cv2.VideoCapture(video_path)
+
+    if not cap.isOpened():
+        print("Error: Unable to open video source.")
+        return
+
+    print("Video source opened successfully. Press 'q' to quit.")
+
+    frame_counter = 0  # Counter to track the frame number
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            print("End of video or unable to read frame.")
+            break
+
+        # Increment frame counter
+        frame_counter += 1
+
+        # Process only every 120th frame (approximately every 4 seconds at 30 FPS)
+        if frame_counter % 120 == 0:
+            print(f"Processing frame {frame_counter}...")
+
+            # Preprocess the frame for OCR
+            preprocessed_frame = preprocess_image(frame)
+
+            # Detect cars in the frame
+            cars = car_cascade.detectMultiScale(preprocessed_frame, scaleFactor=1.1, minNeighbors=3, minSize=(50, 50))
+
+            for (x, y, w, h) in cars:
+                # Draw a rectangle around the car
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+                # Crop the car region (likely where the number plate is)
+                car_region = frame[y:y + h, x:x + w]
+
+                # Preprocess the car region for OCR
+                preprocessed_car = preprocess_image(car_region)
+
+                # Extract number plate text from the car region
+                plate_text = extract_number_plate_text(preprocessed_car)
+                if plate_text:
+                    print(f"Detected Text: {plate_text}")
+                    # Display detected text on the frame
+                    cv2.putText(frame, plate_text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
+
+        # Display the frame
+        cv2.imshow("Video Feed", frame)
+
+        # Break the loop on 'q' key press
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            print("Exiting video capture...")
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+# Run the program
+if __name__ == "__main__":
+    video_path = '/Users/mohan/Downloads/Automatic Number Plate Recognition (ANPR) _ Vehicle Number Plate Recognition (1).mp4'  # Use 0 for live camera feed, or provide a video file path
+    process_video(video_path)
+
